@@ -6,6 +6,7 @@
  * Reads study metadata from OHIF DisplaySetService.
  */
 
+import dicomImageLoader from '@cornerstonejs/dicom-image-loader';
 import { numericValue } from '../utils/stringUtils.js';
 
 let displaySetService;
@@ -27,6 +28,23 @@ export function authorizationHeaders() {
 }
 
 export function getDownloadAvailabilityMessage() {
+  const displaySets = ohifDisplaySets();
+  if (!displaySets.length) {
+    return 'No display sets are loaded in the viewer yet.';
+  }
+
+  let instanceCount = 0;
+  for (const ds of displaySets) {
+    instanceCount += displaySetInstances(ds).length;
+  }
+  if (!instanceCount) {
+    return 'Display sets are present but have no instances yet. Wait for series metadata to finish loading.';
+  }
+
+  if (!hasOhifStudyData()) {
+    return 'Loaded instances have no downloadable DICOM source (WADO URL or local file). If this study was opened from Hub local/IDC files, try Check again after loading completes.';
+  }
+
   return '';
 }
 
@@ -36,17 +54,19 @@ export function ohifDisplaySets() {
     return [];
   }
   try {
-    if (typeof displaySetService.getActiveDisplaySets === 'function') {
-      const active = displaySetService.getActiveDisplaySets();
-      if (active && active.length > 0) {
-        return active;
-      }
-    }
+    // Prefer the full cache for export. Active viewport sets alone can omit
+    // series or include placeholders before retrieve URLs/files are ready.
     if (typeof displaySetService.getDisplaySetCache === 'function') {
       const cache = displaySetService.getDisplaySetCache();
       if (cache && typeof cache.values === 'function') {
-        return Array.from(cache.values());
+        const all = Array.from(cache.values());
+        if (all.length > 0) {
+          return all;
+        }
       }
+    }
+    if (typeof displaySetService.getActiveDisplaySets === 'function') {
+      return displaySetService.getActiveDisplaySets() || [];
     }
   } catch (ignore) {
   }
@@ -176,7 +196,7 @@ export function instanceDownloadUrl(instance) {
 
   const configuration = activeDataSourceConfiguration();
   if (configuration?.staticWado) {
-    return instance.url || instance.imageId || instance.wadouri || instance.wadorsuri || '';
+    return rawInstanceUrl(instance);
   }
 
   const wadoUriRoot = configuration?.wadoUriRoot || configuration?.wadoUri;
@@ -186,20 +206,80 @@ export function instanceDownloadUrl(instance) {
     instance.SeriesInstanceUID &&
     instance.SOPInstanceUID
   ) {
+    // Prefer WADO-RS instance retrieve when the data source renders via wadors
+    // (Hub DICOMweb / modern PACS). Classic WADO-URI is kept when imageRendering
+    // is wadouri or unset.
+    if (configuration?.imageRendering === 'wadors') {
+      const wadoRs = buildWadoRsInstanceUrl(instance, configuration);
+      if (wadoRs) {
+        return wadoRs;
+      }
+    }
     return buildWadoUriDownloadUrl(wadoUriRoot, instance);
   }
 
-  const url = instance.url || instance.imageId || instance.wadouri || instance.wadorsuri || '';
-  return url.startsWith('dicomfile:') ? '' : url;
+  const wadoRs = buildWadoRsInstanceUrl(instance, configuration);
+  if (wadoRs) {
+    return wadoRs;
+  }
+
+  return rawInstanceUrl(instance);
 }
 
 export function instanceDownloadFile(instance) {
   const file = instance?.localFile;
-  return file && typeof file.arrayBuffer === 'function' ? file : null;
+  if (file && typeof file.arrayBuffer === 'function') {
+    return file;
+  }
+  return resolveDicomfileManagedFile(instance);
 }
 
 export function isStaticWadoDataSource() {
   return Boolean(activeDataSourceConfiguration()?.staticWado);
+}
+
+function rawInstanceUrl(instance) {
+  const url = instance.url || instance.imageId || instance.wadouri || instance.wadorsuri || '';
+  return typeof url === 'string' && url.startsWith('dicomfile:') ? '' : url;
+}
+
+function resolveDicomfileManagedFile(instance) {
+  const imageId = instance?.imageId || instance?.url || '';
+  if (typeof imageId !== 'string' || !imageId.startsWith('dicomfile:')) {
+    return null;
+  }
+
+  try {
+    const index = Number(String(imageId.slice('dicomfile:'.length)).split(/[?#]/)[0]);
+    if (!Number.isInteger(index) || index < 0) {
+      return null;
+    }
+    const managed = dicomImageLoader?.wadouri?.fileManager?.get?.(index);
+    if (managed && typeof managed.arrayBuffer === 'function') {
+      return managed;
+    }
+  } catch (ignore) {
+  }
+  return null;
+}
+
+function buildWadoRsInstanceUrl(instance, configuration) {
+  const wadoRoot = (
+    configuration?.wadoRoot ||
+    instance?.wadoRoot ||
+    ''
+  )
+    .toString()
+    .replace(/\/$/, '');
+  if (
+    !wadoRoot ||
+    !instance?.StudyInstanceUID ||
+    !instance?.SeriesInstanceUID ||
+    !instance?.SOPInstanceUID
+  ) {
+    return '';
+  }
+  return `${wadoRoot}/studies/${instance.StudyInstanceUID}/series/${instance.SeriesInstanceUID}/instances/${instance.SOPInstanceUID}`;
 }
 
 function activeDataSourceConfiguration() {

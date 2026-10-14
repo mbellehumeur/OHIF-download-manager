@@ -3,6 +3,15 @@
  * SPDX-License-Identifier: MIT
  */
 
+jest.mock('@cornerstonejs/dicom-image-loader', () => ({
+  wadouri: {
+    fileManager: {
+      get: jest.fn(),
+    },
+  },
+}));
+
+import dicomImageLoader from '@cornerstonejs/dicom-image-loader';
 import {
   authorizationHeaders,
   buildPayloadFromOhif,
@@ -10,6 +19,10 @@ import {
   instanceDownloadUrl,
   setOhifServices,
 } from '../src/downloader/ohifState';
+
+beforeEach(() => {
+  dicomImageLoader.wadouri.fileManager.get.mockReset();
+});
 
 describe('OHIF download manager integration', () => {
   it('builds a download payload from active display sets', () => {
@@ -79,6 +92,57 @@ describe('OHIF download manager integration', () => {
     expect(instanceDownloadUrl(instance)).toBe(
       'https://pacs.example/wado?requestType=WADO&studyUID=1.2.3&seriesUID=1.2.3.4&objectUID=1.2.3.4.5&contentType=application%2Fdicom&transferSyntax=*'
     );
+  });
+
+  it('prefers WADO-RS instance retrieve when imageRendering is wadors', () => {
+    const instance = {
+      StudyInstanceUID: '1.2.3',
+      SeriesInstanceUID: '1.2.3.4',
+      SOPInstanceUID: '1.2.3.4.5',
+      imageId: 'wadors:https://viewer.example/frames/1',
+    };
+    setOhifServices(
+      { services: {} },
+      {
+        getActiveDataSourceOrNull: () => ({
+          getConfig: () => ({
+            wadoUriRoot: 'https://pacs.example/wado',
+            wadoRoot: 'https://pacs.example/dicomweb',
+            imageRendering: 'wadors',
+          }),
+        }),
+      }
+    );
+
+    expect(instanceDownloadUrl(instance)).toBe(
+      'https://pacs.example/dicomweb/studies/1.2.3/series/1.2.3.4/instances/1.2.3.4.5'
+    );
+  });
+
+  it('resolves dicomfile image IDs from the Cornerstone fileManager', () => {
+    const managed = new Blob(['managed DICOM'], { type: 'application/dicom' });
+    managed.arrayBuffer = () => Promise.resolve(new ArrayBuffer(0));
+    dicomImageLoader.wadouri.fileManager.get.mockReturnValue(managed);
+
+    const instance = {
+      StudyInstanceUID: '1.2.3',
+      SeriesInstanceUID: '1.2.3.4',
+      SOPInstanceUID: '1.2.3.4.5',
+      imageId: 'dicomfile:3',
+    };
+    setOhifServices({
+      services: {
+        displaySetService: {
+          getActiveDisplaySets: () => [{ instances: [instance] }],
+        },
+      },
+    });
+
+    expect(instanceDownloadFile(instance)).toBe(managed);
+    expect(dicomImageLoader.wadouri.fileManager.get).toHaveBeenCalledWith(3);
+
+    const payload = buildPayloadFromOhif();
+    expect(payload.studies[0].series[0].instances[0].file).toBe(managed);
   });
 
   it('keeps WADO-RS frame URLs for static WADO reconstruction', () => {
