@@ -13,50 +13,59 @@ The extension executes **100% client-side**, eliminating external server depende
 
 ---
 
-## Quickstart & Testing with Local OHIF Release
+## Quickstart & Testing with Local OHIF 3.14
 
-Follow these step-by-step bash commands to check out the latest official release of OHIF Viewer, include the Download Manager extension, and run a local instance for testing:
+Target: **OHIF Viewer 3.14** (React 19, `@ohif/ui-next`, **pnpm**). The OHIF CLI `link-extension` path is deprecated for the default rsbuild pipeline — prefer editing `pluginConfig.json` and linking the package.
 
 ### Prerequisites
-- **Node.js**: `>= 18.x`
-- **Yarn**: `1.22.x` (Yarn Classic)
+- **Node.js**: `>= 24.x`
+- **pnpm**: `>= 9` (OHIF monorepo uses pnpm)
 - **Git**
 
-### Bash Commands
+### Out-of-tree link (recommended)
+
+Clone this extension **beside** the Viewers repo (sibling directories), then from the OHIF monorepo root:
 
 ```bash
-# 1. Clone the OHIF Viewers repository and check out the target release tag
+# 1. OHIF Viewer 3.14.x
 git clone https://github.com/OHIF/Viewers.git ohif-viewer
 cd ohif-viewer
-git fetch --tags
-git checkout $(git describe --tags $(git rev-list --tags --max-count=1))
+# e.g. a 3.14 beta tag, or stay on master if it is already 3.14
 
-# 2. Clone the Download Manager extension into extensions/download-manager
-git clone https://github.com/nhermab/OHIF-download-manager.git extensions/download-manager
+# 2. Clone this extension as a sibling (not under extensions/)
+cd ..
+git clone https://github.com/nhermab/OHIF-download-manager.git OHIF-download-manager
 
-# 3. Install dependencies across monorepo workspaces (required for CLI dependencies like commander)
-yarn install
+# 3. Link into @ohif/app and register the plugin
+cd ohif-viewer
+# package.json (platform/app):
+#   "@ohif/extension-download-manager": "link:../../OHIF-download-manager"
+# pluginConfig.json — add under extensions:
+#   { "packageName": "@ohif/extension-download-manager", "version": "3.14.0" }
 
-# 4. Link the extension using OHIF CLI
-yarn cli link-extension extensions/download-manager
+pnpm install
 
-# 5. Include DownloadManager in active Mode toolbar layout (e.g. modes/basic/src/index.tsx)
-node -e '
-  const fs = require("fs");
-  const file = "modes/basic/src/index.tsx";
-  if (fs.existsSync(file)) {
-    let c = fs.readFileSync(file, "utf8");
-    if (!c.includes("DownloadManager")) {
-      fs.writeFileSync(file, c.replace("[TOOLBAR_SECTIONS.primary]: [", "[TOOLBAR_SECTIONS.primary]: [\n    \"DownloadManager\","));
-    }
-  }
-'
+# 4. Toolbar: basic/longitudinal use cornerstone.toolbarSections.
+#    Append "DownloadManager" next to "Capture" in
+#    extensions/cornerstone/src/customizations/toolbarButtonsCustomization.ts
+#    (or override via mode customization).
 
-# 6. Launch the local OHIF Viewer instance
-yarn dev
+# 5. Runtime config (e.g. platform/app/public/config/dev.js):
+#    aquestDownloadManager: { enabled: true }
+
+# 6. Dev server
+pnpm run dev
+# or: pnpm run dev:fast
 ```
 
-After starting the dev server, open your browser and navigate to **`http://localhost:3000`** to test the Download Manager within the OHIF Viewer interface.
+Open **`http://localhost:3000`** and use the **Download** toolbar button.
+
+### In-tree clone (alternate)
+
+```bash
+git clone https://github.com/nhermab/OHIF-download-manager.git extensions/download-manager
+# Add to pluginConfig.json with "directory" if needed, then pnpm install
+```
 
 ---
 
@@ -183,10 +192,10 @@ at `extensions/download-manager/`. Runtime code is grouped by responsibility:
 ## Installation & Monorepo Integration
 
 ### Monorepo Setup
-Ensure Node.js 18+ and Yarn 1 are installed in the OHIF monorepo root.
+Ensure Node.js 24+ and pnpm are installed in the OHIF monorepo root.
 
 ```bash
-yarn install --frozen-lockfile
+pnpm install
 ```
 
 ### Extension Registration
@@ -196,15 +205,15 @@ yarn install --frozen-lockfile
   "extensions": [
     {
       "packageName": "@ohif/extension-download-manager",
-      "version": "3.12.10"
+      "version": "3.14.0"
     }
   ]
 }
 ```
-*(Running `yarn cli link-extension extensions/download-manager` automatically adds this entry).*
+Prefer editing `pluginConfig.json` directly. The OHIF CLI `link-extension` command only patches the legacy rspack webpack config and is not required for `pnpm run build` / `dev:fast` (rsbuild).
 
-2. **Mount Button in Mode Toolbar (`modes/basic/src/index.tsx`)**:
-In OHIF v3, extensions provide tools/commands, but **Modes** control what appears in the active viewer toolbar. Ensure `'DownloadManager'` is included in `toolbarSections.primary`:
+2. **Mount Button in Mode Toolbar**:
+In OHIF v3, extensions register the button (`DownloadManager` via `toolbarService.register` on mode enter), but **modes / customizations** control which ids appear in the primary section. On 3.14, basic and longitudinal typically use `$reference: 'cornerstone.toolbarSections'`. Append `'DownloadManager'` there (see `extensions/cornerstone/src/customizations/toolbarButtonsCustomization.ts`):
 ```typescript
 export const toolbarSections = {
   [TOOLBAR_SECTIONS.primary]: [
@@ -286,12 +295,13 @@ For detailed guides, compliance specifications, and user manuals, consult the **
 Run unit tests across all anonymizer, redactor, codec, manifest, and storage writer test suites:
 
 ```bash
-yarn test:unit:ci
+pnpm test:unit:ci
+# or: yarn test:unit:ci
 ```
 
 To build production assets:
 ```bash
-yarn build
+pnpm build
 ```
 
 ---
