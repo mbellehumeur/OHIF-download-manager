@@ -12,6 +12,7 @@ import {
   parseTagWhitelist,
   isNonDefaultConfig,
   getNonDefaultDetails,
+  tagWhitelistText,
 } from '../anonymizer/anonymizerConfig';
 
 interface AnonymizerPanelProps {
@@ -35,7 +36,8 @@ export default function AnonymizerPanel({
   const commonTags = getCommonWhitelistedTags();
   const isNonDefault = isNonDefaultConfig(config);
   const nonDefaultDetails = isNonDefault ? getNonDefaultDetails(config) : [];
-  const parsedTags = parseTagWhitelist(config.tagWhitelist || '');
+  const whitelistText = tagWhitelistText(config.tagWhitelist);
+  const parsedTags = parseTagWhitelist(whitelistText);
 
   const handleFieldChange = (field: string, value: any) => {
     onChangeConfig({
@@ -49,7 +51,7 @@ export default function AnonymizerPanel({
   };
 
   const handleAddTag = (tagToAdd: string) => {
-    const existing = (config.tagWhitelist || '').trim();
+    const existing = whitelistText.trim();
     const nextVal = existing ? `${existing}\n${tagToAdd}` : tagToAdd;
     handleFieldChange('tagWhitelist', nextVal);
   };
@@ -499,7 +501,7 @@ export default function AnonymizerPanel({
                 </div>
                 <textarea
                   rows={3}
-                  value={config.tagWhitelist || ''}
+                  value={whitelistText}
                   placeholder="Enter 8-character DICOM tag hex codes (one per line or comma-separated)&#10;e.g. 00100040, 0008103E"
                   onChange={e => handleFieldChange('tagWhitelist', e.target.value)}
                   className="w-full rounded border border-[#364153] bg-[#1c2331] p-2 font-mono text-xs text-white focus:border-blue-500 focus:outline-none"

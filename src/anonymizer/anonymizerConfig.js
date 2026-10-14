@@ -13,12 +13,25 @@ export { DEFAULT_ANONYMIZER_CONFIG };
 const STORAGE_KEY_CONFIG = "aquest_anonymizer_config";
 const STORAGE_KEY_ENABLED = "aquest_anonymizer_enabled";
 
+/** Normalize tagWhitelist to a string for UI / comparisons (arrays are joined). */
+export function tagWhitelistText(value) {
+  if (Array.isArray(value)) {
+    return value.filter(Boolean).join('\n');
+  }
+  if (value == null) {
+    return '';
+  }
+  return String(value);
+}
+
 export function loadAnonymizerConfig() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_CONFIG);
     if (!raw) return { ...DEFAULT_ANONYMIZER_CONFIG };
     const parsed = JSON.parse(raw);
-    return { ...DEFAULT_ANONYMIZER_CONFIG, ...parsed };
+    const merged = { ...DEFAULT_ANONYMIZER_CONFIG, ...parsed };
+    merged.tagWhitelist = tagWhitelistText(merged.tagWhitelist);
+    return merged;
   } catch (ignore) {
     return { ...DEFAULT_ANONYMIZER_CONFIG };
   }
@@ -70,7 +83,9 @@ export function isNonDefaultConfig(cfg) {
   if (cfg.keepDeviceIdentity !== def.keepDeviceIdentity) return true;
   if (cfg.keepInstitutionIdentity !== def.keepInstitutionIdentity) return true;
   if (cfg.privateTagsPolicy !== def.privateTagsPolicy) return true;
-  if ((cfg.tagWhitelist || "").trim() !== (def.tagWhitelist || "").trim()) return true;
+  if (tagWhitelistText(cfg.tagWhitelist).trim() !== tagWhitelistText(def.tagWhitelist).trim()) {
+    return true;
+  }
   if (cfg.structuredContentPolicy !== def.structuredContentPolicy) return true;
   if (cfg.newPatientName !== def.newPatientName) return true;
   if (cfg.newPatientId !== def.newPatientId) return true;
@@ -135,8 +150,10 @@ export function getNonDefaultDetails(cfg) {
   } else if (cfg.privateTagsPolicy === "keep_all") {
     details.push("ALL private vendor tags kept (high risk)");
   }
-  if ((cfg.tagWhitelist || "").trim()) {
-    details.push(`Custom Tag Whitelist active (${parseTagWhitelist(cfg.tagWhitelist).length} tag(s))`);
+  if (tagWhitelistText(cfg.tagWhitelist).trim()) {
+    details.push(
+      `Custom Tag Whitelist active (${parseTagWhitelist(cfg.tagWhitelist).length} tag(s))`
+    );
   }
   if (cfg.structuredContentPolicy === "sanitize") {
     details.push("Structured report content kept (sanitized text)");
@@ -175,8 +192,9 @@ export function getNonDefaultDetails(cfg) {
 }
 
 export function parseTagWhitelist(text) {
-  if (!text) return [];
-  const tokens = String(text).split(/[\n,;\s]+/);
+  const normalized = tagWhitelistText(text);
+  if (!normalized.trim()) return [];
+  const tokens = normalized.split(/[\n,;\s]+/);
   const results = [];
   const seen = {};
 

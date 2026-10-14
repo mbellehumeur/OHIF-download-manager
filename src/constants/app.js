@@ -35,7 +35,8 @@ export const DEFAULT_ANONYMIZER_CONFIG = {
   aggregateAgesOver89: true,
   roundPatientAgeYears: 0,
   privateTagsPolicy: 'remove_all', // 'remove_all' | 'keep_safe' | 'keep_all'
-  tagWhitelist: [],
+  // UI stores newline-separated tags as a string; anonymizer.js also accepts arrays.
+  tagWhitelist: '',
   srPolicy: 'remove', // 'remove' | 'sanitize'
   keepInstitution: false,
   keepDevice: false,
