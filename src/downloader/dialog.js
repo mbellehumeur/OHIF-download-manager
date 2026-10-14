@@ -33,6 +33,7 @@ import {
   getPresets,
   parseTagWhitelist,
   getCommonWhitelistedTags,
+  tagWhitelistText,
 } from '../anonymizer/anonymizerConfig.js';
 import { DEFAULT_ANONYMIZER_CONFIG } from '../constants/app.js';
 
@@ -802,7 +803,7 @@ function populateInputsFromConfig(dialog, cfg) {
   setChecked('anon-keep-device', cfg.keepDeviceIdentity === true);
   setChecked('anon-keep-institution', cfg.keepInstitutionIdentity === true);
   setValue('anon-private-tags-policy', cfg.privateTagsPolicy || 'remove_all');
-  setValue('anon-tag-whitelist', cfg.tagWhitelist || '');
+  setValue('anon-tag-whitelist', tagWhitelistText(cfg.tagWhitelist));
   setValue('anon-sr-policy', cfg.structuredContentPolicy || 'remove');
   setChecked('anon-reject-encapsulated', cfg.rejectEncapsulatedDocuments !== false);
   setChecked('anon-enable-pixel-redaction', cfg.enablePixelRedaction !== false);
